@@ -153,6 +153,9 @@ class Server {
 			mySocket.close();
 		}
 		
+		/**
+		 * Runs a loop that deals with communication to the client
+		 */
 		public void run() {
 			
 			while(running) {
