@@ -154,7 +154,8 @@ class Server {
 		}
 		
 		/**
-		 * Runs a loop that deals with communication to the client
+		 * Runs a loop that deals with communication to the client, handling
+		 * commands one by one
 		 */
 		public void run() {
 			
