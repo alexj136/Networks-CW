@@ -3,6 +3,7 @@ import java.util.ArrayList;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -149,27 +150,14 @@ class Server {
 						Integer.parseInt(this.inFromClient.readLine());
 					
 					//Cascaded if/else statements to handle the request
-					if(nextCommand == Client.SEND_PASSWORD) {
-						this.sendPassword();
-					}
-					else if(nextCommand == Client.CLIENT_EXIT) {
-						this.clientExit();
-					}
-					else if(nextCommand == Client.SERVER_EXIT) {
-						this.serverExit();
-					}
-					else if(nextCommand == Client.LIST_DIRECTORY) {
-						
-					}
-					else if(nextCommand == Client.SEND_FILE) {
-						
-					}
-					else if(nextCommand == Client.RECIEVE_FILE) {
-						
-					}
-					else {
-						//Nothing to do
-					}
+					if(nextCommand == Client.SEND_PASSWORD) this.sendPassword();
+					else if(nextCommand == Client.CLIENT_EXIT) this.clientExit();
+					else if(nextCommand == Client.SERVER_EXIT) this.serverExit();
+					else if(nextCommand == Client.LIST_DIRECTORY) this.listDirectory();
+					else if(nextCommand == Client.SEND_FILE) this.sendFile();
+					else if(nextCommand == Client.RECIEVE_FILE) this.recieveFile();
+					else /*Nothing to do*/;
+
 				}
 				
 			} catch(Exception e) {}
@@ -187,13 +175,11 @@ class Server {
 				this.authenticated = true;
 				
 				//Send a successful response code
-				outToClient.writeBytes(
-					Integer.valueOf(Server.SUCCESS).toString() + "\n");
+				outToClient.writeBytes(Server.SUCCESS + "\n");
 			}
 			else {
 				//Send a failed response code
-				outToClient.writeBytes(
-					Integer.valueOf(Server.FAILURE).toString() + "\n");
+				outToClient.writeBytes(Server.FAILURE + "\n");
 			}
 		}
 		
@@ -210,8 +196,7 @@ class Server {
 		private void serverExit() throws Exception {
 			if(this.authenticated) {
 				//Send a success response code
-				outToClient.writeBytes(
-					Integer.valueOf(Server.SUCCESS).toString() + "\n");
+				outToClient.writeBytes(Server.SUCCESS + "\n");
 				
 				//Stop this connection
 				this.stop();
@@ -221,8 +206,7 @@ class Server {
 			}
 			else {
 				//Send a failed response code
-				outToClient.writeBytes(
-					Integer.valueOf(Server.FAILURE).toString() + "\n");
+				outToClient.writeBytes(Server.FAILURE + "\n");
 			}
 		}
 		
@@ -244,8 +228,7 @@ class Server {
 			}
 			else {
 				//Send a failed response code
-				outToClient.writeBytes(
-					Integer.valueOf(Server.FAILURE).toString() + "\n");
+				outToClient.writeBytes(Server.FAILURE + "\n");
 			}
 		}
 		
@@ -253,7 +236,7 @@ class Server {
 		 * Recieves a file from the client
 		 * Named according to the client, hence the confusing name
 		 */
-		private void sendFile() {
+		private void sendFile() throws Exception {
 			
 		}
 		
@@ -261,8 +244,56 @@ class Server {
 		 * Sends a file to the client
 		 * Named according to the client, hence the confusing name
 		 */
-		private void recieveFile() {
+		private void recieveFile() throws Exception {
+						
+			//Get the file name from the client
+			String fileName = inFromClient.readLine();
 			
+			//Stores the file if it is found in this directory
+			File requestedFile;
+			
+			//Have we found the requested file?
+			boolean foundFile = false;
+			
+			//Get the files in this directory
+			File[] files = new File(".").listFiles();
+			
+			//Look for the requested file in this directory
+			for(File file : files) {
+				if(file.getName().equals(fileName) && !file.isDirectory()) {
+					foundFile = true;
+					requestedFile = file;
+				}
+			}
+			
+			if(this.authenticated && foundFile) {
+				//Tell the client we found the file and can send it
+				outToClient.writeBytes(Server.SUCCESS + "\n");
+				
+				BufferedReader br = 
+					new BufferedReader(new FileReader(requestedFile));
+				
+				ArrayList<String> fileLines = new ArrayList<String>();
+				
+				String nextLine = br.readLine();
+				
+				while(nextLine != null) {
+					fileLines.add(nextLine);
+					nextLine = br.readLine();
+				}
+				
+				//Tell the client howmany lines we're sending
+				outToClient.writeBytes(fileLines.size() + "\n");
+				
+				for(String line : fileLines) {
+					outToClient.writeBytes(line + "\n");
+				}
+			}
+			else {
+				//Send a fail message because the file wasn't found
+				//or the client hasn't authenticated
+				outToClient.writeBytes(Server.FAILURE + "\n");
+			}
 		}
 	}
 }
@@ -343,12 +374,14 @@ class Client {
 	 * sophisticated like refusing further connection attempts or
 	 * sent passwords for 10 seconds attempts after three
 	 * failures.
+	 * @param pw The password to authenticate with
+	 * @return an OK if the authentication was successful, AuthenticationFailed
+	 * otherwise.
 	 */
 	public Response sendPassword(String pw) throws Exception {
 		
 		//Tell the server we're sending the password
-		outToServer.writeBytes(
-			Integer.valueOf(Client.SEND_PASSWORD).toString() + "\n");
+		outToServer.writeBytes(Client.SEND_PASSWORD + "\n");
 		
 		//Send the password to the server
 		outToServer.writeBytes(pw + "\n");
@@ -378,8 +411,7 @@ class Client {
 	public void clientExit() throws Exception {
 
 		//Simply tell the server we're terminating the connection
-		outToServer.writeBytes(
-					Integer.valueOf(Client.CLIENT_EXIT).toString() + "\n");
+		outToServer.writeBytes(Client.CLIENT_EXIT + "\n");
 		
 		//Stop the client
 		this.exit();
@@ -405,8 +437,7 @@ class Client {
 	public Response serverExit() throws Exception {
 		
 		//Tell the server we're to terminate
-		outToServer.writeBytes(
-					Integer.valueOf(Client.SERVER_EXIT).toString() + "\n");
+		outToServer.writeBytes(Client.SERVER_EXIT + "\n");
 		
 		//Read the server's response
 		int response = Integer.parseInt(inFromServer.readLine());
@@ -424,17 +455,29 @@ class Client {
 		}
 	} 
 	
+	/**
+	 * Returns an instance of DirectoryListing with the local
+	 * directory stored in dir_. If the directory cannot be sent,
+	 * then DirectoryProblem is returned.
+	 * @return a DirectoryListing if the request was successful, otherwise a
+	 * DirectoryProblem
+	 */
 	public Response listDirectory() throws Exception {
 		//Tell the server we want a directory listing
-		outToServer.writeBytes(
-					Integer.valueOf(Client.SERVER_EXIT).toString() + "\n");
+		outToServer.writeBytes(Client.SERVER_EXIT + "\n");
 		
-		//Return the directory listing or an error
+		//Read the server's response
+		String line = inFromServer.readLine();
 		
-		// Returns an instance of DirectoryListing with the local
-		// directory stored in dir_. If the directory cannot be sent,
-		// then DirectoryProblem is returned.
-		throw new Exception("not implemented yet");
+		//If the server put a "0" on the buffer, that corresponds to an error
+		//(most likely a authentication issue)
+		if(line.equals("0") || line.equals("0\n")) {
+			return new DirectoryProblem();
+		}
+		//Otherwise return the string as it will be the directory listing
+		else {
+			return new DirectoryListing(line);
+		}
 	}
 	
 	public Response sendFile(String fileName, String fileContent) throws Exception {
@@ -460,13 +503,31 @@ class Client {
 	public Response receiveFile(String fileName) throws Exception {
 		
 		//Send the appropriate command number to the server
-		outToServer.writeBytes(
-			Integer.valueOf(Client.RECIEVE_FILE).toString() + "\n");
+		outToServer.writeBytes(Client.RECIEVE_FILE + "\n");
 		
-		//Read the length of the file (length is in lines)
-		//int lines = ..... can use readCommand code from Handler class
+		//Send the file name to the server
+		outToServer.writeBytes(fileName + "\n");
 		
-		throw new Exception("not implemented yet");
+		//Read the response from the server i.e. if we read a 1, expect a file,
+		//if we read a 0 expect nothing and return a error
+		int status = Integer.parseInt(inFromServer.readLine());
+		
+		if(status == Server.SUCCESS) {
+			//Get the number of lines for the file from the server
+			int linesInFile = Integer.parseInt(inFromServer.readLine());
+			
+			//Read the file from the buffer
+			String file = "";
+			for(int i = 0; i < linesInFile; i++) {
+				file += inFromServer.readLine() + "\n";
+			}
+			
+			//Return the file in a FileContent object
+			return new FileContent(file);
+		}
+		else{
+			return new CannotRecieveFile();
+		}
 	}
 }
 
