@@ -8,6 +8,9 @@ import java.io.DataOutputStream;
 
 class Server {
 	
+	public static final int FAILURE = 0;
+	public static final int SUCCESS = 1;
+	
 	//Is the server running?
 	private boolean running = true;
 	
@@ -122,10 +125,10 @@ class Server {
 		/**
 		 * Reads the next command from the client from the input stream
 		 * @return the integer value representing the command the client has
-		 * requested the server perform. Valid commands are -1 < value < 5. if
+		 * requested the server perform. Valid commands are -1 < value < 6. if
 		 * an invalid value is found, -1 is returned.
 		 */
-		private int readCommand() {
+		private int readInteger() {
 			//Store the command when we read it
 			int value;
 			
@@ -140,7 +143,7 @@ class Server {
 			}
 			
 			//Return the integer, or -1 if it's outside the valid range
-			return (value > -1 && value < 5) ? value : -1;
+			return (value > -1 && value < 6) ? value : -1;
 		}
 		
 		/**
@@ -157,42 +160,61 @@ class Server {
 		 * Runs a loop that deals with communication to the client, handling
 		 * commands one by one
 		 */
-		public void run() {
+		public void run() {	
+			try {
 			
-			while(running) {
+				while(running) {
+					
+					//Get the next command
+					int nextCommand = this.readInteger();
+					
+					//Cascaded if/else statements to handle the request
+					if(nextCommand == Client.SEND_PASSWORD) {
+						this.sendPassword();
+					}
+					else if(nextCommand == Client.CLIENT_EXIT) {
+						this.clientExit();
+					}
+					else if(nextCommand == Client.SERVER_EXIT) {
+						
+					}
+					else if(nextCommand == Client.LIST_DIRECTORY) {
+						
+					}
+					else if(nextCommand == Client.SEND_FILE) {
+						
+					}
+					else if(nextCommand == Client.RECIEVE_FILE) {
+						
+					}
+					else {
+						
+					}
+				}
 				
-				//Get the next command
-				int nextCommand = this.readCommand();
-				
-				//Cascaded if/else statements to handle the request
-				if(nextCommand == Client.CLIENT_EXIT) {
-					
-				}
-				else if(nextCommand == Client.SERVER_EXIT) {
-					
-				}
-				else if(nextCommand == Client.LIST_DIRECTORY) {
-					
-				}
-				else if(nextCommand == Client.SEND_FILE) {
-					
-				}
-				else if(nextCommand == Client.RECIEVE_FILE) {
-					
-				}
-				else {
-					
-				}
-			}
-			
+			} catch(Exception e) {}
 		}
 		
 		private void sendPassword() throws Exception {
-			String pw = "";
 			
-			//Get the password
+			//Get the sent password
+			String pw = inFromClient.readLine();
 			
-			if(pw.equals(this.password)) this.authenticated = true;
+			//If the passwords match:
+			if(pw.equals(this.password)) {
+				
+				//set the authenticated field to true
+				this.authenticated = true;
+				
+				//Send a successful response code
+				outToClient.writeBytes(
+					Integer.valueOf(Server.SUCCESS).toString() + "\n");
+			}
+			else {
+				//Send a failed response code
+				outToClient.writeBytes(
+					Integer.valueOf(Server.FAILURE).toString() + "\n");
+			}
 		}
 		
 		/**
@@ -238,11 +260,12 @@ class Server {
 class Client {
 	
 	//Possible commands the client can send to the server
-	public static final int CLIENT_EXIT = 0;
-	public static final int SERVER_EXIT = 1;
-	public static final int LIST_DIRECTORY = 2;
-	public static final int SEND_FILE = 3;
-	public static final int RECIEVE_FILE = 4;
+	public static final int SEND_PASSWORD = 0;
+	public static final int CLIENT_EXIT = 1;
+	public static final int SERVER_EXIT = 2;
+	public static final int LIST_DIRECTORY = 3;
+	public static final int SEND_FILE = 4;
+	public static final int RECIEVE_FILE = 5;
 	
 	//Address of the server
 	private String serverAddress;
@@ -280,9 +303,11 @@ class Client {
 			//Open the socket
 			this.mySocket = new Socket(this.serverAddress, this.serverPort);
 			
-			//Initialise the input & output streams
+			//Initialise the input stream
 			this.inFromServer = new BufferedReader(
 				new InputStreamReader(mySocket.getInputStream()));
+			
+			//Initialise the output stream
 			this.outToServer = new DataOutputStream(mySocket.getOutputStream());
 			
 			this.connected = true;
@@ -296,23 +321,49 @@ class Client {
 		return this.connected ? new OK() : new CannotConnect();
 	}
 	
+	/**
+	 * Returns OK if password passing is successful, else
+	 * AuthenticationFailed.  There is no need to do anything
+	 * sophisticated like refusing further connection attempts or
+	 * sent passwords for 10 seconds attempts after three
+	 * failures.
+	 */
 	public Response sendPassword(String pw) throws Exception {
-		// Returns OK if password passing is successful, else
-		// AuthenticationFailed.  There is no need to do anything
-		// sophisticated like refusing further connection attempts or
-		// sent passwords for 10 seconds attempts after three
-		// failures.
-		throw new Exception("not implemented yet");
+		
+		//Tell the server we're sending the password
+		outToServer.writeBytes(
+					Integer.valueOf(Client.SEND_PASSWORD).toString() + "\n");
+		
+		//Send the password to the server
+		outToServer.writeBytes(pw + "\n");
+		
+		//Read the server's response
+		int response = Integer.parseInt(inFromServer.readLine());
+		
+		if(response == 1) {
+			//If response = 1, authentication was successful
+			return new OK();
+		}
+		else {
+			//If response = 0, or something else went wrong, 
+			//return an AuthenticationFailed
+			return new AuthenticationFailed();
+		}
 	}
-
+	
+	/**
+	 * Sends a message to the server indicating the wish to
+	 * terminate the connection, and exits the client
+	 * unconditionally(i.e. works even if the client has not
+	 * successfully been authenticated by the server). The server
+	 * does not acknowledge the disconnection message.  The server
+	 * does NOT terminate.
+	 */
 	public void clientExit() throws Exception {
-		// Sends a message to the server indicating the wish to
-		// terminate the connection, and exits the client
-		// unconditionally(i.e. works even if the client has not
-		// successfully been authenticated by the server). The server
-		// does not acknowledge the disconnection message.  The server
-		// does NOT terminate.
-		throw new Exception("not implemented yet");
+
+		//Simply tell the server we're terminating the connection
+		outToServer.writeBytes(
+					Integer.valueOf(Client.CLIENT_EXIT).toString() + "\n");
 	} 
 	
 	// All methods below require that the client has been password
@@ -362,7 +413,8 @@ class Client {
 	public Response receiveFile(String fileName) throws Exception {
 		
 		//Send the appropriate command number to the server
-		//outToServer.writeBytes(Client.RECIEVE_FILE.toString());
+		outToServer.writeBytes(
+			Integer.valueOf(Client.RECIEVE_FILE).toString() + "\n");
 		
 		//Read the length of the file (length is in lines)
 		//int lines = ..... can use readCommand code from Handler class
