@@ -3,6 +3,8 @@ public class TestClientNoSubmit {
 		Client client = new Client("localhost", 2345);
 		client.connect();
 		client.sendPassword("hello");
-		client.recieveFile("testfile.txt");
+		client.receiveFile("testfile.txt");
+		client.serverExit();
+		System.out.println("success");
 	}
 }

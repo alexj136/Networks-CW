@@ -3,10 +3,13 @@ import java.util.ArrayList;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.InputStreamReader;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.IOException;
 
 class Server {
 	
@@ -237,7 +240,47 @@ class Server {
 		 * Named according to the client, hence the confusing name
 		 */
 		private void sendFile() throws Exception {
-			
+			if(this.authenticated) {
+				//Get the file name
+				String fileName = this.inFromClient.readLine();
+				
+				//Send authentication success message to client
+				this.outToClient.writeBytes(Server.SUCCESS + "\n");
+				
+				//Get the file line length from the client
+				int fileLength = Integer.parseInt(this.inFromClient.readLine());
+				
+				//Get the file from the client
+				String fileContent = "";
+				for(int i = 0; i < fileLength; i++) {
+					fileContent += this.inFromClient.readLine() + "\n";
+				}
+				
+				//Create a file object from the filename
+				File file = new File(fileName);
+ 				
+ 				//If there isn't a file in the directory with the given name, create one
+				if(!file.exists()) file.createNewFile();
+				
+				try {
+					//Write the contents into the file
+					BufferedWriter bw = 
+						new BufferedWriter(new FileWriter(file.getAbsoluteFile()));
+					bw.write(fileContent);
+					bw.close();
+					
+					//Send success message to client
+					this.outToClient.writeBytes(Server.SUCCESS + "\n");
+					
+				} catch(IOException e) {
+					//If an IOException was triggered, send an error message
+					this.outToClient.writeBytes(Server.FAILURE + "\n");
+				}
+			}
+			else {
+				//Send error message
+				this.outToClient.writeBytes(Server.FAILURE + "\n");
+			}
 		}
 		
 		/**
@@ -479,14 +522,44 @@ class Client {
 		}
 	}
 	
+	/**
+	 * Takes a file, here represented by fileContent, sends it to
+	 * the server, which tries to store it in it's local directory
+	 * under the name fileName. If this is not possible,
+	 * e.g. because a file with that name already exists, it
+	 * returns CannotSendFile to the client, otherwise it returns
+	 * OK.
+	 * @param fileName The name for the file
+	 * @param fileContent The contents of the file
+	 */
 	public Response sendFile(String fileName, String fileContent) throws Exception {
-		// Takes a file, here represented by fileContent, sends it to
-		// the server, which tries to store it in it's local directory
-		// under the name fileName. If this is not possible,
-		// e.g. because a file with that name already exists, it
-		// returns CannotSendFile to the client, otherwise it returns
-		// OK.
-		throw new Exception("not implemented yet");
+		//Tell the server we want to send a file
+		this.outToServer.writeBytes(Client.SERVER_EXIT + "\n");
+		
+		//Read the server's response
+		int response = Integer.parseInt(this.inFromServer.readLine());
+		
+		//If the request was rejected, stop here
+		if(response != 1) return new CannotSendFile();
+		
+		//Send the file name
+		this.outToServer.writeBytes(fileName + "\n");
+		
+		//Count the file length (number of carriage returns + 1)
+		int fileLength = 1;
+		for(char c : fileContent.toCharArray()) if(c == '\n') fileLength++;
+		
+		//Send the file length
+		this.outToServer.writeBytes(fileLength + "\n");
+		
+		//Send the file
+		this.outToServer.writeBytes(fileContent + "\n");
+		
+		//Read the server's response
+		response = Integer.parseInt(this.inFromServer.readLine());
+		
+		//Return the appropriate object
+		return (response == 1) ? new OK() : new CannotSendFile();
 	}
 	
 	/**
