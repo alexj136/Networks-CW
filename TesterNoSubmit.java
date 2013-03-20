@@ -28,4 +28,9 @@ public class TesterNoSubmit {
 		System.out.println("Requesting status of " + page3);
 		System.out.println(new Page().check(page3).msg());
 	}
+	
+	public static void TestServer() throws Exception {
+		Server server = new Server();
+		server.run(2345, "hello", new java.util.ArrayList<String>());
+	}
 }

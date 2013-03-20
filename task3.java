@@ -119,9 +119,9 @@ class Server {
 			this.mySocket = mySocket;
 			this.running = true;
 			this.authenticated = false;
-			inFromClient = new BufferedReader(
+			this.inFromClient = new BufferedReader(
 				new InputStreamReader(mySocket.getInputStream()));
-			outToClient = new DataOutputStream(mySocket.getOutputStream());
+			this.outToClient = new DataOutputStream(mySocket.getOutputStream());
 		}
 		
 		/**
@@ -129,8 +129,8 @@ class Server {
 		 */
 		private void stop() throws Exception {
 			if(this.running) {
-				inFromClient.close();
-				outToClient.close();
+				this.inFromClient.close();
+				this.outToClient.close();
 				mySocket.close();
 			}
 			this.running = false;
@@ -166,7 +166,7 @@ class Server {
 		private void sendPassword() throws Exception {
 			
 			//Get the sent password
-			String pw = inFromClient.readLine();
+			String pw = this.inFromClient.readLine();
 			
 			//If the passwords match:
 			if(pw.equals(this.password)) {
@@ -175,11 +175,11 @@ class Server {
 				this.authenticated = true;
 				
 				//Send a successful response code
-				outToClient.writeBytes(Server.SUCCESS + "\n");
+				this.outToClient.writeBytes(Server.SUCCESS + "\n");
 			}
 			else {
 				//Send a failed response code
-				outToClient.writeBytes(Server.FAILURE + "\n");
+				this.outToClient.writeBytes(Server.FAILURE + "\n");
 			}
 		}
 		
@@ -196,7 +196,7 @@ class Server {
 		private void serverExit() throws Exception {
 			if(this.authenticated) {
 				//Send a success response code
-				outToClient.writeBytes(Server.SUCCESS + "\n");
+				this.outToClient.writeBytes(Server.SUCCESS + "\n");
 				
 				//Stop this connection
 				this.stop();
@@ -206,7 +206,7 @@ class Server {
 			}
 			else {
 				//Send a failed response code
-				outToClient.writeBytes(Server.FAILURE + "\n");
+				this.outToClient.writeBytes(Server.FAILURE + "\n");
 			}
 		}
 		
@@ -224,11 +224,11 @@ class Server {
 				for(File file : files) listing += file.getName() + " ";
 				
 				//Send that listing to the client
-				outToClient.writeBytes(listing + "\n");
+				this.outToClient.writeBytes(listing + "\n");
 			}
 			else {
 				//Send a failed response code
-				outToClient.writeBytes(Server.FAILURE + "\n");
+				this.outToClient.writeBytes(Server.FAILURE + "\n");
 			}
 		}
 		
@@ -247,10 +247,10 @@ class Server {
 		private void recieveFile() throws Exception {
 						
 			//Get the file name from the client
-			String fileName = inFromClient.readLine();
+			String fileName = this.inFromClient.readLine();
 			
 			//Stores the file if it is found in this directory
-			File requestedFile;
+			File requestedFile = null;
 			
 			//Have we found the requested file?
 			boolean foundFile = false;
@@ -266,33 +266,32 @@ class Server {
 				}
 			}
 			
-			if(this.authenticated && foundFile) {
+			if(this.authenticated && requestedFile != null) {
 				//Tell the client we found the file and can send it
-				outToClient.writeBytes(Server.SUCCESS + "\n");
+				this.outToClient.writeBytes(Server.SUCCESS + "\n");
 				
+				//Read the file's lines into an ArrayList
 				BufferedReader br = 
 					new BufferedReader(new FileReader(requestedFile));
-				
 				ArrayList<String> fileLines = new ArrayList<String>();
-				
 				String nextLine = br.readLine();
-				
 				while(nextLine != null) {
 					fileLines.add(nextLine);
 					nextLine = br.readLine();
 				}
 				
-				//Tell the client howmany lines we're sending
-				outToClient.writeBytes(fileLines.size() + "\n");
+				//Tell the client how many lines we're sending
+				this.outToClient.writeBytes(fileLines.size() + "\n");
 				
+				//Send those lines
 				for(String line : fileLines) {
-					outToClient.writeBytes(line + "\n");
+					this.outToClient.writeBytes(line + "\n");
 				}
 			}
 			else {
 				//Send a fail message because the file wasn't found
 				//or the client hasn't authenticated
-				outToClient.writeBytes(Server.FAILURE + "\n");
+				this.outToClient.writeBytes(Server.FAILURE + "\n");
 			}
 		}
 	}
@@ -381,13 +380,13 @@ class Client {
 	public Response sendPassword(String pw) throws Exception {
 		
 		//Tell the server we're sending the password
-		outToServer.writeBytes(Client.SEND_PASSWORD + "\n");
+		this.outToServer.writeBytes(Client.SEND_PASSWORD + "\n");
 		
 		//Send the password to the server
-		outToServer.writeBytes(pw + "\n");
+		this.outToServer.writeBytes(pw + "\n");
 		
 		//Read the server's response
-		int response = Integer.parseInt(inFromServer.readLine());
+		int response = Integer.parseInt(this.inFromServer.readLine());
 		
 		if(response == 1) {
 			//If response = 1, authentication was successful
@@ -411,7 +410,7 @@ class Client {
 	public void clientExit() throws Exception {
 
 		//Simply tell the server we're terminating the connection
-		outToServer.writeBytes(Client.CLIENT_EXIT + "\n");
+		this.outToServer.writeBytes(Client.CLIENT_EXIT + "\n");
 		
 		//Stop the client
 		this.exit();
@@ -440,7 +439,7 @@ class Client {
 		outToServer.writeBytes(Client.SERVER_EXIT + "\n");
 		
 		//Read the server's response
-		int response = Integer.parseInt(inFromServer.readLine());
+		int response = Integer.parseInt(this.inFromServer.readLine());
 		
 		if(response == Server.SUCCESS) {
 			//Stop the client
@@ -464,10 +463,10 @@ class Client {
 	 */
 	public Response listDirectory() throws Exception {
 		//Tell the server we want a directory listing
-		outToServer.writeBytes(Client.SERVER_EXIT + "\n");
+		this.outToServer.writeBytes(Client.SERVER_EXIT + "\n");
 		
 		//Read the server's response
-		String line = inFromServer.readLine();
+		String line = this.inFromServer.readLine();
 		
 		//If the server put a "0" on the buffer, that corresponds to an error
 		//(most likely a authentication issue)
@@ -503,23 +502,23 @@ class Client {
 	public Response receiveFile(String fileName) throws Exception {
 		
 		//Send the appropriate command number to the server
-		outToServer.writeBytes(Client.RECIEVE_FILE + "\n");
+		this.outToServer.writeBytes(Client.RECIEVE_FILE + "\n");
 		
 		//Send the file name to the server
-		outToServer.writeBytes(fileName + "\n");
+		this.outToServer.writeBytes(fileName + "\n");
 		
 		//Read the response from the server i.e. if we read a 1, expect a file,
 		//if we read a 0 expect nothing and return a error
-		int status = Integer.parseInt(inFromServer.readLine());
+		int status = Integer.parseInt(this.inFromServer.readLine());
 		
 		if(status == Server.SUCCESS) {
 			//Get the number of lines for the file from the server
-			int linesInFile = Integer.parseInt(inFromServer.readLine());
+			int linesInFile = Integer.parseInt(this.inFromServer.readLine());
 			
 			//Read the file from the buffer
 			String file = "";
 			for(int i = 0; i < linesInFile; i++) {
-				file += inFromServer.readLine() + "\n";
+				file += this.inFromServer.readLine() + "\n";
 			}
 			
 			//Return the file in a FileContent object
