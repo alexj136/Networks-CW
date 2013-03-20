@@ -5,6 +5,7 @@ import java.net.Socket;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.DataOutputStream;
+import java.io.File;
 
 class Server {
 	
@@ -123,37 +124,15 @@ class Server {
 		}
 		
 		/**
-		 * Reads the next command from the client from the input stream
-		 * @return the integer value representing the command the client has
-		 * requested the server perform. Valid commands are -1 < value < 6. if
-		 * an invalid value is found, -1 is returned.
-		 */
-		private int readInteger() {
-			//Store the command when we read it
-			int value;
-			
-			//Read one character from the input stream and convert it to an
-			//integer
-			try {
-				char[] c = new char[1];
-				inFromClient.read(c, 0, 1);
-				value = Character.getNumericValue(c[0]);
-			} catch(Exception e) {
-				value = -1;
-			}
-			
-			//Return the integer, or -1 if it's outside the valid range
-			return (value > -1 && value < 6) ? value : -1;
-		}
-		
-		/**
 		 * Closes this Handler and all its connections
 		 */
 		private void stop() throws Exception {
+			if(this.running) {
+				inFromClient.close();
+				outToClient.close();
+				mySocket.close();
+			}
 			this.running = false;
-			inFromClient.close();
-			outToClient.close();
-			mySocket.close();
 		}
 		
 		/**
@@ -166,7 +145,8 @@ class Server {
 				while(running) {
 					
 					//Get the next command
-					int nextCommand = this.readInteger();
+					int nextCommand =
+						Integer.parseInt(this.inFromClient.readLine());
 					
 					//Cascaded if/else statements to handle the request
 					if(nextCommand == Client.SEND_PASSWORD) {
@@ -176,7 +156,7 @@ class Server {
 						this.clientExit();
 					}
 					else if(nextCommand == Client.SERVER_EXIT) {
-						
+						this.serverExit();
 					}
 					else if(nextCommand == Client.LIST_DIRECTORY) {
 						
@@ -188,7 +168,7 @@ class Server {
 						
 					}
 					else {
-						
+						//Nothing to do
 					}
 				}
 				
@@ -228,15 +208,45 @@ class Server {
 		 * Terminates the connection to all clients and stops the server
 		 */
 		private void serverExit() throws Exception {
-			Server.this.running = false;
-			this.stop();
+			if(this.authenticated) {
+				//Send a success response code
+				outToClient.writeBytes(
+					Integer.valueOf(Server.SUCCESS).toString() + "\n");
+				
+				//Stop this connection
+				this.stop();
+				
+				//Stop the server
+				Server.this.running = false;
+			}
+			else {
+				//Send a failed response code
+				outToClient.writeBytes(
+					Integer.valueOf(Server.FAILURE).toString() + "\n");
+			}
 		}
 		
 		/**
 		 * Sends a directory listing to the client
 		 */
-		private void listDirectory() {
-			
+		private void listDirectory() throws Exception {
+			if(this.authenticated) {
+				
+				//Get the files in this directory
+				File[] files = new File(".").listFiles();
+				
+				//Create a string with the directory listing
+				String listing = "";
+				for(File file : files) listing += file.getName() + " ";
+				
+				//Send that listing to the client
+				outToClient.writeBytes(listing + "\n");
+			}
+			else {
+				//Send a failed response code
+				outToClient.writeBytes(
+					Integer.valueOf(Server.FAILURE).toString() + "\n");
+			}
 		}
 		
 		/**
@@ -289,6 +299,12 @@ class Client {
 		this.connected = false;
 	}
 	
+	public void exit() throws Exception {
+		this.inFromServer.close();
+		this.outToServer.close();
+		this.mySocket.close();
+	}
+	
 	/**
 	 * returns OK if connection succeeds,
 	 * If the client is from an IP address that is blocked by the server, 
@@ -332,7 +348,7 @@ class Client {
 		
 		//Tell the server we're sending the password
 		outToServer.writeBytes(
-					Integer.valueOf(Client.SEND_PASSWORD).toString() + "\n");
+			Integer.valueOf(Client.SEND_PASSWORD).toString() + "\n");
 		
 		//Send the password to the server
 		outToServer.writeBytes(pw + "\n");
@@ -364,6 +380,9 @@ class Client {
 		//Simply tell the server we're terminating the connection
 		outToServer.writeBytes(
 					Integer.valueOf(Client.CLIENT_EXIT).toString() + "\n");
+		
+		//Stop the client
+		this.exit();
 	} 
 	
 	// All methods below require that the client has been password
@@ -372,18 +391,46 @@ class Client {
 	// authenticated. We will not mention the requirement for
 	// authentication below, but it is in place.
 	
+	/**
+	 * Sends a message to the server indicating the wish to
+	 * terminate the connection and also the server.  The server
+	 * has to acknowledge the termination using OK, and the
+	 * request will fail if the client has not previously been
+	 * authenticated.  If the server acknowledges the request, it
+	 * will terminate.  When the client receives the
+	 * acknowledgment, it will also terminate.
+	 * @return an OK object if the server accepts the termination request, or
+	 * a TerminationRequestDenied object if not.
+	 */
 	public Response serverExit() throws Exception {
-		// Sends a message to the server indicating the wish to
-		// terminate the connection and also the server.  The server
-		// has to acknowledge the termination using OK, and the
-		// request will fail if the client has not previously been
-		// authenticated.  If the server acknowledge the request, it
-		// will terminate.  When the client receives the
-		// acknowledgment, it will also terminate.
-		throw new Exception("not implemented yet");
+		
+		//Tell the server we're to terminate
+		outToServer.writeBytes(
+					Integer.valueOf(Client.SERVER_EXIT).toString() + "\n");
+		
+		//Read the server's response
+		int response = Integer.parseInt(inFromServer.readLine());
+		
+		if(response == Server.SUCCESS) {
+			//Stop the client
+			this.exit();
+			
+			//Return an OK
+			return new OK();
+		}
+		else {
+			//Return a TerminationRequestDenied
+			return new TerminationRequestDenied();
+		}
 	} 
 	
 	public Response listDirectory() throws Exception {
+		//Tell the server we want a directory listing
+		outToServer.writeBytes(
+					Integer.valueOf(Client.SERVER_EXIT).toString() + "\n");
+		
+		//Return the directory listing or an error
+		
 		// Returns an instance of DirectoryListing with the local
 		// directory stored in dir_. If the directory cannot be sent,
 		// then DirectoryProblem is returned.
