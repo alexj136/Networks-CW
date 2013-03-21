@@ -1,0 +1,113 @@
+Candidate no: 18512
+
+----------------------------
+Report - Networks Assignment
+----------------------------
+
+
+TCP or UDP?
+-----------
+I have chosen to use TCP in my assignment as TCP uses error correction. Using
+UDP, it would not be possible to ensure that files would be sent without being
+lost or corrupted.
+
+
+My Protocol
+-----------
+Described below is the protocol for each action that the system implements.
+The Client sends a number (0 to 5) to the server each time it wants the server
+to do something. The number that it sends to the server corresponds to the
+operation the client is requesting. While the server is idle, it listens to its
+socket for such a number, and actions the request when it receives it.
+
+
+Connection - Client side
+	- Open a socket to the server
+
+Connection - Server side
+	- Open a socket to the client
+	- Close the connection if their IP address is in the forbidden list
+
+Password Exchange - Client side
+	- Send the number '0' to the server on a line by itself, to indicate to it
+	that the client is trying to send a password
+	- Send the password to the server
+	- Read the server's response (0 for failure, 1 for successful
+	authentication)
+
+Password Exchange - Server side
+	- Read the password exchange request (0) from the client
+	- Read the sent password from the client
+	- Send a success message (1) if the password given matches the server's
+	password, otherwise send a failure message (0)
+
+Client exit - Client side
+	- Send the number '1' to the server indicating the request to quit
+	- Close connections
+
+Client exit - Server side
+	- Read the close request (1) from the client
+	- Close the connection to the client, and stop the thread handling that
+	client
+
+Server exit - Client side
+	- Send the number '2' to the server on a line by itself, to indicate to it
+	that the client wants the server to stop
+	- Read the server's response (0 = failure, 1 = success)
+	- If the response was successful, close the connections and quit, otherwise
+	do nothing
+
+Server exit - Server side
+	- Read the client's request for the server to quit (number 2)
+	- If the client has authenticated, send a success message, otherwise send a
+	fail message
+	- Close all connections and stop the server if the client's request was
+	accepted
+
+List directory - Client side
+	- Send a list directory request to the server (number 3)
+	- Read the server's response (0 or 1 as previously)
+	- If the server allows the directory listing, read it from the server,
+	otherwise do nothing
+
+List directory - Server side
+	- Read the client's request for a directory listing
+	- if the client is authenticated send a success message (1) or a failure
+	message (0)
+	- Send the directory listing if the client was authenticated
+
+Send file from server to client - Client side
+	- Write the request to the server (4)
+	- Send the requested file's name to the server
+	- Read the server's response (1 for success, 0 for failure)
+	- If the response was successful:
+		- Read the file's length (number of lines N) from the server
+		- Read N lines from the server and return them as a string to the caller
+
+Send file from server to client - Server side
+	- Read the request from the client (4)
+	- Receive the file name from the client
+	- Respond with success (1) if the client is authenticated AND we have found
+	a file with the given name in the working directory. Otherwise send a
+	failure message (0)
+	- If the request was successful:
+		- Send the file's length (number of lines N) to the client
+		- Send N lines to the client
+
+Send file from client to server - Client side
+	- Write the request to the server (5)
+	- Send the file's name to the server
+	- Read the server's response (1 for success, 0 for failure)
+	- If the response was successful:
+		- Send the file's length (number of lines N) to the server
+		- Write the N lines of the file to the server one by one
+
+Send file from client to server - Server side
+	- Read the request from the client (5)
+	- Receive the file name from the client
+	- Respond with success (1) if the client is authenticated. Otherwise send a
+	failure message (0)
+	- If the request was successful:
+		- Read the file's length (number of lines N) from the client
+		- Read N lines from the client into a file and save that file to the
+		disk under the name the client gave

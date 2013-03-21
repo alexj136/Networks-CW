@@ -4,11 +4,11 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.InputStreamReader;
 import java.io.DataOutputStream;
-import java.io.File;
 import java.io.IOException;
 
 class Server {
@@ -51,17 +51,29 @@ class Server {
 		
 		while(this.running) {
 			
-			//Accept a new connection, print the IP address of the connecting client
+			//Accept a new connection
 			Socket clientSocket = welcomeSocket.accept();
 			String clientIP = clientSocket.getInetAddress().toString();
 			
-			//Reject the connector if their IP (or a corresponding
-			//domain name) is blacklisted
-			if(forbidden.contains(clientIP) ||
-				forbidden.contains(Server.reverseLookup(clientIP))) { 
-				
-				clientSocket.close();
+			//Should we reject the client?
+			boolean reject = false;
+			
+			try {
+				//Reject the connector if their IP (or a corresponding
+				//domain name) is blacklisted
+				if(forbidden.contains(clientIP) ||
+					forbidden.contains(Server.reverseLookup(clientIP))) { 
+					
+					reject = true;
+				}
+			} catch(Exception e) {
+				//If we couldn't resolve their hostname in DNS, the connector is
+				//allowed to connect. If we found that the resolved hostname was
+				//forbidden, we prevent them connecting. 
 			}
+			
+			//Prevent the connection if necessary
+			if(reject) clientSocket.close();
 			
 			//Else we'll allow them to connect
 			else {
@@ -71,14 +83,14 @@ class Server {
 				handlers.add(h);
 				h.run();
 			}
-			
-			//Close the ServerSocket
-			welcomeSocket.close();
-			
-			//Terminate all the handlers
-			for(Handler h : handlers) {
-				h.stop();
-			}
+		}
+		
+		//Close the ServerSocket
+		welcomeSocket.close();
+		
+		//Terminate all the handlers
+		for(Handler h : handlers) {
+			h.stop();
 		}
 	}
 	
@@ -94,6 +106,11 @@ class Server {
 	}
 	
 	class Handler implements Runnable {
+		
+		//Lock for synchronisation - ensures the server can't terminate this
+		//handler's connection while the Handler is communicating with
+		//the client
+		//public Object lock;
 		
 		//The socket this handler runs on
 		private Socket mySocket;
@@ -145,7 +162,6 @@ class Server {
 		 */
 		public void run() {	
 			try {
-			
 				while(running) {
 					
 					//Get the next command
@@ -163,7 +179,7 @@ class Server {
 
 				}
 				
-			} catch(Exception e) {}
+			} catch(Exception e) {e.printStackTrace();}
 		}
 		
 		private void sendPassword() throws Exception {
@@ -226,8 +242,12 @@ class Server {
 				String listing = "";
 				for(File file : files) listing += file.getName() + " ";
 				
+				//Send an allowed response code
+				this.outToClient.writeBytes(Server.SUCCESS + "\n");
+				
 				//Send that listing to the client
 				this.outToClient.writeBytes(listing + "\n");
+				
 			}
 			else {
 				//Send a failed response code
@@ -241,11 +261,11 @@ class Server {
 		 */
 		private void sendFile() throws Exception {
 			if(this.authenticated) {
-				//Get the file name
-				String fileName = this.inFromClient.readLine();
-				
 				//Send authentication success message to client
 				this.outToClient.writeBytes(Server.SUCCESS + "\n");
+				
+				//Get the file name
+				String fileName = this.inFromClient.readLine();
 				
 				//Get the file line length from the client
 				int fileLength = Integer.parseInt(this.inFromClient.readLine());
@@ -258,11 +278,11 @@ class Server {
 				
 				//Create a file object from the filename
 				File file = new File(fileName);
- 				
- 				//If there isn't a file in the directory with the given name, create one
-				if(!file.exists()) file.createNewFile();
 				
 				try {
+					//If there isn't a file in the directory with the given name, create one
+					if(!file.exists()) file.createNewFile();
+					
 					//Write the contents into the file
 					BufferedWriter bw = 
 						new BufferedWriter(new FileWriter(file.getAbsoluteFile()));
@@ -422,6 +442,9 @@ class Client {
 	 */
 	public Response sendPassword(String pw) throws Exception {
 		
+		//Throw an exception if we're not connected to a server
+		if(!this.connected) throw new Exception("Not connected to a server");
+		
 		//Tell the server we're sending the password
 		this.outToServer.writeBytes(Client.SEND_PASSWORD + "\n");
 		
@@ -478,7 +501,7 @@ class Client {
 	 */
 	public Response serverExit() throws Exception {
 		
-		//Tell the server we're to terminate
+		//Tell the server we want it to terminate
 		outToServer.writeBytes(Client.SERVER_EXIT + "\n");
 		
 		//Read the server's response
@@ -506,19 +529,22 @@ class Client {
 	 */
 	public Response listDirectory() throws Exception {
 		//Tell the server we want a directory listing
-		this.outToServer.writeBytes(Client.SERVER_EXIT + "\n");
+		this.outToServer.writeBytes(Client.LIST_DIRECTORY + "\n");
 		
-		//Read the server's response
-		String line = this.inFromServer.readLine();
+		//Are we allowed to do this?
+		boolean allowed =
+			Integer.parseInt(this.inFromServer.readLine()) == Server.SUCCESS;
 		
+		//Get and return the directory listing if allowed
+		if(allowed) {
+			String listing = this.inFromServer.readLine();
+			
+			return new DirectoryListing(listing);
+		}
 		//If the server put a "0" on the buffer, that corresponds to an error
 		//(most likely a authentication issue)
-		if(line.equals("0") || line.equals("0\n")) {
-			return new DirectoryProblem();
-		}
-		//Otherwise return the string as it will be the directory listing
 		else {
-			return new DirectoryListing(line);
+			return new DirectoryProblem();
 		}
 	}
 	
@@ -534,7 +560,7 @@ class Client {
 	 */
 	public Response sendFile(String fileName, String fileContent) throws Exception {
 		//Tell the server we want to send a file
-		this.outToServer.writeBytes(Client.SERVER_EXIT + "\n");
+		this.outToServer.writeBytes(Client.SEND_FILE + "\n");
 		
 		//Read the server's response
 		int response = Integer.parseInt(this.inFromServer.readLine());
@@ -545,9 +571,9 @@ class Client {
 		//Send the file name
 		this.outToServer.writeBytes(fileName + "\n");
 		
-		//Count the file length (number of carriage returns + 1)
-		int fileLength = 1;
-		for(char c : fileContent.toCharArray()) if(c == '\n') fileLength++;
+		//Split the file by lines to get its length in lines
+		String[] lines = fileContent.split("\\r?\\n");
+		int fileLength = lines.length;
 		
 		//Send the file length
 		this.outToServer.writeBytes(fileLength + "\n");
@@ -582,9 +608,10 @@ class Client {
 		
 		//Read the response from the server i.e. if we read a 1, expect a file,
 		//if we read a 0 expect nothing and return a error
-		int status = Integer.parseInt(this.inFromServer.readLine());
+		boolean allowed =
+			Integer.parseInt(this.inFromServer.readLine()) == Server.SUCCESS;
 		
-		if(status == Server.SUCCESS) {
+		if(allowed) {
 			//Get the number of lines for the file from the server
 			int linesInFile = Integer.parseInt(this.inFromServer.readLine());
 			

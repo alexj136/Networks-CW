@@ -2,7 +2,7 @@ public class TesterNoSubmit {
 	
 	public static void main(String[] args) throws Exception {
 		//TesterNoSubmit.testDNSLookup();
-		//TesterNoSubmit.testPage();
+		//TesterNoSubmit.testPage(); 
 		TestServer();
 	}
 	
@@ -33,6 +33,5 @@ public class TesterNoSubmit {
 	public static void TestServer() throws Exception {
 		Server server = new Server();
 		server.run(2345, "hello", new java.util.ArrayList<String>());
-		System.out.println("Success");
 	}
 }
